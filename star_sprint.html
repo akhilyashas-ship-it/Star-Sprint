@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Star Sprint</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: linear-gradient(180deg,#071129,#001021);
+      color: #eef;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .container {
+      width: 100%;
+      max-width: 820px;
+      padding: 18px;
+      box-sizing: border-box;
+    }
+    .header {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .header img {
+      width: 96px;
+      height: 96px;
+      border-radius: 12px;
+      object-fit: cover;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+    .meta {
+      color: #9fb3c8;
+      font-size: 13px;
+      margin-top: 6px;
+    }
+    canvas {
+      display: block;
+      margin: 8px auto;
+      border-radius: 10px;
+      background: linear-gradient(180deg,#00121a,#001a2b);
+      box-shadow: inset 0 -20px 40px rgba(0,0,0,0.5);
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 8px;
+    }
+    .btn {
+      background: #0d1b2a;
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .small {
+      color: #9fb3c8;
+      text-align: center;
+      margin-top: 8px;
+      font-size: 13px;
+    }
+    footer {
+      color: #9fb3c8;
+      text-align: center;
+      margin-top: 10px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="cover.png" alt="Star Sprint cover">
+      <div>
+        <h1>Star Sprint</h1>
+        <div class="meta">Tiny arcade: collect stars, avoid meteors. Use ← → or A/D. Mobile touch supported.</div>
+      </div>
+    </div>
+    <canvas id="game" width="720" height="480"></canvas>
+    <div class="controls">
+      <button id="start" class="btn">Start</button>
+      <button id="restart" class="btn" style="display:none">Restart</button>
+    </div>
+    <div class="small">Score by collecting yellow stars. Hitting a meteor ends the run.</div>
+    <footer>Built for quick sharing — upload to GitHub Pages or Netlify for a public URL.</footer>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    let w = canvas.width, h = canvas.height;
+    let player = { x: w/2, y: h-60, r: 18, speed: 6 };
+    let stars=[], meteors=[], keys={};
+    let score=0, running=false, gameOver=false;
+    let spawnStarTimer=0, spawnMeteorTimer=0;
+    let starInterval=1000, meteorInterval=1400;
+
+    document.addEventListener('keydown', e=> keys[e.key.toLowerCase()]=true);
+    document.addEventListener('keyup', e=> keys[e.key.toLowerCase()]=false);
+
+    // touch support
+    canvas.addEventListener('touchmove', e=>{
+      const rect = canvas.getBoundingClientRect();
+      const tx = e.touches[0].clientX-rect.left;
+      player.x = tx;
+      e.preventDefault();
+    });
+
+    function spawnStar(){ const r=10+Math.random()*8;
+      stars.push({x:Math.random()*(w-40)+20,y:-20,r,vy:2+Math.random()*2});
+    }
+    function spawnMeteor(){ const r=18+Math.random()*22;
+      meteors.push({x:Math.random()*(w-40)+20,y:-40,r,vy:2.4+Math.random()*2.4});
+    }
+    function dist(x1,y1,x2,y2){const dx=x1-x2,dy=y1-y2;return Math.sqrt(dx*dx+dy*dy);}
+    
+    function update(dt){ if(!running) return;
+      if(keys['arrowleft']||keys['a']) player.x -= player.speed;
+      if(keys['arrowright']||keys['d']) player.x += player.speed;
+      if(player.x<player.r) player.x=player.r;
+      if(player.x>w-player.r) player.x=w-player.r;
+
+      spawnStarTimer+=dt; spawnMeteorTimer+=dt;
+      if(spawnStarTimer>starInterval){spawnStarTimer=0; spawnStar();}
+      if(spawnMeteorTimer>meteorInterval){spawnMeteorTimer=0; spawnMeteor();}
+
+      for(let i=stars.length-1;i>=0;i--){
+        const s=stars[i]; s.y+=s.vy;
+        if(s.y-s.r>h) stars.splice(i,1);
+        else if(dist(s.x,s.y,player.x,player.y) < s.r+player.r){
+          score+=1; stars.splice(i,1);
+          if(score%5===0){ starInterval = Math.max(400, starInterval-80);
+                           meteorInterval = Math.max(700, meteorInterval-60);}
+        }
+      }
+      for(let i=meteors.length-1;i>=0;i--){
+        const m=meteors[i]; m.y+=m.vy;
+        if(m.y-m.r>h) meteors.splice(i,1);
+        else if(dist(m.x,m.y,player.x,player.y) < m.r+player.r){
+          running=false; gameOver=true;
+          document.getElementById('restart').style.display='inline-block';
+          document.getElementById('start').style.display='none';
+        }
+      }
+    }
+
+    function drawStar(cx,cy,r,color){
+      ctx.fillStyle=color; ctx.beginPath();
+      for(let i=0;i<5;i++){
+        const a=i*Math.PI*2/5 - Math.PI/2;
+        const x=cx+Math.cos(a)*r;
+        const y=cy+Math.sin(a)*r;
+        ctx.lineTo(x,y);
+        const a2=a+Math.PI/5;
+        const x2=cx+Math.cos(a2)*(r*0.5);
+        const y2=cy+Math.sin(a2)*(r*0.5);
+        ctx.lineTo(x2,y2);
+      }
+      ctx.closePath(); ctx.fill();
+    }
+
+    function draw(){
+      ctx.clearRect(0,0,w,h);
+      ctx.fillStyle='#021926'; ctx.fillRect(0,0,w,h);
+
+      // player
+      ctx.save(); ctx.translate(player.x,player.y);
+      ctx.fillStyle='#4cc9f0'; ctx.beginPath(); ctx.arc(0,0,player.r,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#023047'; ctx.beginPath(); ctx.arc(0,-4,8,0,Math.PI*2); ctx.fill(); ctx.restore();
+
+      for(const s of stars) drawStar(s.x,s.y,s.r,'#ffd166');
+      for(const m of meteors){
+        ctx.fillStyle='#ef476f'; ctx.beginPath(); ctx.arc(m.x,m.y,m.r,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#b4163a'; ctx.beginPath(); ctx.arc(m.x-6,m.y-6,m.r*0.4,0,Math.PI*2); ctx.fill();
+      }
+
+      ctx.fillStyle='#fff'; ctx.font='18px Arial';
+      ctx.fillText('Score: '+score,12,24);
+
+      if(gameOver){
+        ctx.fillStyle='rgba(0,0,0,0.6)';
+        ctx.fillRect(w/2-140,h/2-40,280,80);
+        ctx.fillStyle='#fff'; ctx.font='20px Arial';
+        ctx.fillText('Game Over', w/2-60, h/2 - 4);
+        ctx.fillStyle='#ffd166';
+        ctx.fillText('Final Score: '+score, w/2-72, h/2 + 22);
+      }
+    }
+
+    let last = performance.now();
+    function loop(t){ const dt = t-last; last = t; update(dt); draw(); requestAnimationFrame(loop); }
+    requestAnimationFrame(loop);
+
+    document.getElementById('start').addEventListener('click', ()=>{
+      if(gameOver){ reset(); }
+      running=true; gameOver=false;
+      document.getElementById('start').style.display='none';
+      document.getElementById('restart').style.display='none';
+      last = performance.now();
+    });
+
+    document.getElementById('restart').addEventListener('click', ()=>{
+      reset(); running=true; gameOver=false;
+      document.getElementById('restart').style.display='none';
+      document.getElementById('start').style.display='none';
+    });
+
+    function reset(){
+      stars=[]; meteors=[]; score=0;
+      spawnStarTimer=0; spawnMeteorTimer=0;
+      starInterval=1000; meteorInterval=1400;
+      document.getElementById('restart').style.display='none';
+      document.getElementById('start').style.display='inline-block';
+    }
+  </script>
+</body>
+</html>
